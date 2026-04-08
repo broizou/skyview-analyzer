@@ -1,6 +1,37 @@
 import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { useWeatherStore } from '@/store/useWeatherStore';
+
+const OTOPO_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  name: 'OpenTopoMap',
+  sources: {
+    otopo: {
+      type: 'raster',
+      tiles: [
+        'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
+        'https://b.tile.opentopomap.org/{z}/{x}/{y}.png',
+        'https://c.tile.opentopomap.org/{z}/{x}/{y}.png',
+      ],
+      tileSize: 256,
+      maxzoom: 17,
+      attribution:
+        'Kartendaten: © <a href="https://openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>-Mitwirkende, ' +
+        'SRTM | Kartendarstellung: © <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> ' +
+        '(<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank">CC-BY-SA</a>)',
+    },
+  },
+  layers: [
+    {
+      id: 'otopo-tiles',
+      type: 'raster',
+      source: 'otopo',
+      minzoom: 0,
+      maxzoom: 22,
+    },
+  ],
+};
 
 export function WeatherMap() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -13,16 +44,22 @@ export function WeatherMap() {
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+      style: OTOPO_STYLE,
       center: [position.lng, position.lat],
-      zoom: 9,
-      attributionControl: false,
+      zoom: 10,
+      attributionControl: true,
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false }), 'top-right');
+    map.addControl(
+      new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: false,
+      }),
+      'top-right',
+    );
 
-    // Initial marker
+    // Marker at selected position
     const marker = new maplibregl.Marker({ color: 'hsl(215, 80%, 52%)' })
       .setLngLat([position.lng, position.lat])
       .addTo(map);
@@ -36,7 +73,10 @@ export function WeatherMap() {
 
     mapRef.current = map;
 
-    return () => { map.remove(); mapRef.current = null; };
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
   }, []);
 
   // Sync marker when position changes externally
@@ -49,8 +89,8 @@ export function WeatherMap() {
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="absolute inset-0" />
-      {/* Position tooltip */}
-      <div className="absolute bottom-2 left-2 bg-card/90 backdrop-blur-sm rounded px-2 py-1 text-[10px] text-muted-foreground border border-border shadow-sm">
+      {/* Position overlay */}
+      <div className="absolute bottom-6 left-2 bg-card/90 backdrop-blur-sm rounded px-2 py-1 text-[10px] text-muted-foreground border border-border shadow-sm pointer-events-none">
         {position.lat.toFixed(4)}°N, {position.lng.toFixed(4)}°E
       </div>
     </div>
