@@ -1,0 +1,166 @@
+/**
+ * Convertit la réponse Open-Meteo en WeatherData.
+ *
+ * Pipeline :
+ *  1. Extraire les 48 séries horaires (aujourd'hui + demain)
+ *  2. Pour chaque heure :
+ *     a. Lire les 8 niveaux de pression
+ *     b. Convertir via geopotential_height → altitude m
+ *     c. Interpoler linéairement vers grille 0-5000 m par 100 m
+ *     d. Dewpoint (niveaux) calculé via Magnus(T, RH)
+ *  3. Grouper par jour local
+ */
+
+import type { WeatherData, HourlyProfile, VerticalLevel } from '@/types/weather';
+import { PRESSURE_LEVELS, type OpenMeteoResponse } from './aromeClient';
+
+const TARGET_ALTITUDES = Array.from({ length: 51 }, (_, i) => i * 100); // 0→5000 m
+
+// ── Helpers mathématiques ─────────────────────────────────────────────────────
+
+function dewpointMagnus(tempC: number, rh: number): number {
+  const a = 17.625, b = 243.04;
+  const alpha = Math.log(Math.max(rh, 0.1) / 100) + (a * tempC) / (b + tempC);
+  return (b * alpha) / (a - alpha);
+}
+
+function lerp(x0: number, x1: number, y0: number, y1: number, x: number): number {
+  if (x1 === x0) return y0;
+  return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+}
+
+function lerpDir(d0: number, d1: number, t: number): number {
+  let diff = d1 - d0;
+  if (diff >  180) diff -= 360;
+  if (diff < -180) diff += 360;
+  return (d0 + diff * t + 360) % 360;
+}
+
+function interpolateScalar(alts: number[], vals: number[], target: number): number {
+  if (target <= alts[0]) return vals[0];
+  if (target >= alts[alts.length - 1]) return vals[alts.length - 1];
+  const hi = alts.findIndex((a) => a >= target);
+  return lerp(alts[hi - 1], alts[hi], vals[hi - 1], vals[hi], target);
+}
+
+function interpolateDirection(alts: number[], dirs: number[], target: number): number {
+  if (target <= alts[0]) return dirs[0];
+  if (target >= alts[alts.length - 1]) return dirs[alts.length - 1];
+  const hi = alts.findIndex((a) => a >= target);
+  const t = (target - alts[hi - 1]) / (alts[hi] - alts[hi - 1]);
+  return lerpDir(dirs[hi - 1], dirs[hi], t);
+}
+
+function val(
+  hourly: Record<string, (number | null)[] | string[]>,
+  key: string,
+  idx: number,
+): number {
+  const arr = hourly[key] as (number | null)[];
+  return arr?.[idx] ?? 0;
+}
+
+// ── Profil vertical pour un index temporel donné ──────────────────────────────
+
+function buildVerticalProfile(
+  hourly: Record<string, (number | null)[] | string[]>,
+  idx: number,
+): VerticalLevel[] {
+  // Collecter les valeurs par niveau de pression
+  const raw = [...PRESSURE_LEVELS].map((p) => ({
+    alt:  val(hourly, `geopotential_height_${p}hPa`, idx),
+    temp: val(hourly, `temperature_${p}hPa`, idx),
+    rh:   Math.min(100, Math.max(0, val(hourly, `relative_humidity_${p}hPa`, idx))),
+    wspd: val(hourly, `windspeed_${p}hPa`, idx),
+    wdir: val(hourly, `winddirection_${p}hPa`, idx),
+  }));
+
+  // Trier par altitude croissante (les niveaux de pression décroissants donnent des altitudes croissantes)
+  const sorted = raw.filter((r) => r.alt > 0).sort((a, b) => a.alt - b.alt);
+  if (sorted.length < 2) return TARGET_ALTITUDES.map((altitude) => ({
+    altitude, temperature: 15, dewpoint: 5,
+    wind: { speed: 0, direction: 0 }, humidity: 50, cloudCover: 0,
+  }));
+
+  const alts  = sorted.map((r) => r.alt);
+  const temps = sorted.map((r) => r.temp);
+  const rhs   = sorted.map((r) => r.rh);
+  const wspds = sorted.map((r) => r.wspd);
+  const wdirs = sorted.map((r) => r.wdir);
+
+  return TARGET_ALTITUDES.map((altitude) => {
+    const temperature = interpolateScalar(alts, temps, altitude);
+    const humidity    = Math.min(100, Math.max(0, interpolateScalar(alts, rhs, altitude)));
+    const speed       = Math.max(0, interpolateScalar(alts, wspds, altitude));
+    const direction   = interpolateDirection(alts, wdirs, altitude);
+    return {
+      altitude,
+      temperature,
+      dewpoint: dewpointMagnus(temperature, humidity),
+      wind: { speed, direction },
+      humidity,
+      cloudCover: humidity > 75 ? (humidity - 75) / 25 : 0,
+    };
+  });
+}
+
+function buildHourlyProfile(
+  hourly: Record<string, (number | null)[] | string[]>,
+  idx: number,
+  hour: number,
+): HourlyProfile {
+  return {
+    hour,
+    levels:               buildVerticalProfile(hourly, idx),
+    precipitation:        val(hourly, 'precipitation', idx),
+    cloudLow:             val(hourly, 'cloudcover_low',  idx) / 100,
+    cloudMid:             val(hourly, 'cloudcover_mid',  idx) / 100,
+    cloudHigh:            val(hourly, 'cloudcover_high', idx) / 100,
+    surfaceTemp:          val(hourly, 'temperature_2m', idx),
+    boundaryLayerHeight:  Math.max(50, val(hourly, 'boundary_layer_height', idx)),
+  };
+}
+
+// ── Point d'entrée public ─────────────────────────────────────────────────────
+
+export function normalizeAromeResponse(
+  raw: OpenMeteoResponse,
+  lat: number,
+  lng: number,
+): WeatherData {
+  const times = raw.hourly.time as string[];
+
+  // Grouper les indices par date locale "YYYY-MM-DD"
+  const byDate = new Map<string, { idx: number; hour: number }[]>();
+  times.forEach((t, idx) => {
+    const [date, timeStr] = t.split('T');
+    const hour = parseInt(timeStr.split(':')[0], 10);
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date)!.push({ idx, hour });
+  });
+
+  const dates = [...byDate.keys()].sort().slice(0, 2);
+
+  const forecasts = dates.map((dateStr) => {
+    const entries = byDate.get(dateStr)!;
+
+    // Map heure → profil
+    const profileMap = new Map<number, HourlyProfile>();
+    entries.forEach(({ idx, hour }) => {
+      profileMap.set(hour, buildHourlyProfile(raw.hourly, idx, hour));
+    });
+
+    // Garantir 24 profils (copie du voisin le plus proche si heure manquante)
+    const profiles: HourlyProfile[] = Array.from({ length: 24 }, (_, h) => {
+      if (profileMap.has(h)) return profileMap.get(h)!;
+      const nearest = [...profileMap.entries()].sort(
+        (a, b) => Math.abs(a[0] - h) - Math.abs(b[0] - h),
+      )[0];
+      return { ...nearest[1], hour: h };
+    });
+
+    return { date: new Date(dateStr), profiles };
+  });
+
+  return { position: { lat, lng }, forecasts };
+}

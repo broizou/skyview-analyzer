@@ -1,9 +1,7 @@
 import { create } from 'zustand';
 import type { Position, WeatherData, DaySelection } from '@/types/weather';
-import { generateWeatherData } from '@/services/mockWeatherData';
-import { fetchWeatherDataWithFallback } from '@/services/weatherApi';
-
-type DataSource = 'arome' | 'mock' | 'loading';
+import { fetchAromeData } from '@/services/aromeClient';
+import { normalizeAromeResponse } from '@/services/normalizer';
 
 interface WeatherState {
   position: Position;
@@ -11,9 +9,10 @@ interface WeatherState {
   daySelection: DaySelection;
   maxAltitude: number;
   weatherData: WeatherData | null;
+  isLoading: boolean;
+  error: string | null;
   showParcelTrajectory: boolean;
   mobileTab: 'analysis' | 'map';
-  dataSource: DataSource;
 
   setPosition: (pos: Position) => void;
   setSelectedHour: (hour: number) => void;
@@ -25,38 +24,46 @@ interface WeatherState {
 
 const DEFAULT_POSITION: Position = { lat: 45.19, lng: 5.73 }; // Grenoble
 
-export const useWeatherStore = create<WeatherState>((set) => ({
-  position: DEFAULT_POSITION,
-  selectedHour: 12,
-  daySelection: 'today',
-  maxAltitude: 3000,
-  // Données mock immédiates le temps que le backend réponde
-  weatherData: generateWeatherData(DEFAULT_POSITION),
+async function loadWeather(lat: number, lng: number): Promise<WeatherData> {
+  const raw = await fetchAromeData(lat, lng);
+  return normalizeAromeResponse(raw, lat, lng);
+}
+
+export const useWeatherStore = create<WeatherState>((set, get) => ({
+  position:            DEFAULT_POSITION,
+  selectedHour:        12,
+  daySelection:        'today',
+  maxAltitude:         3000,
+  weatherData:         null,
+  isLoading:           true,
+  error:               null,
   showParcelTrajectory: false,
-  mobileTab: 'analysis',
-  dataSource: 'loading',
+  mobileTab:           'analysis',
 
   setPosition: (pos) => {
-    // Mise à jour immédiate avec les données mock pour ne pas bloquer l'UI
-    set({ position: pos, dataSource: 'loading', weatherData: generateWeatherData(pos) });
-    // Fetch asynchrone des vraies données
-    fetchWeatherDataWithFallback(pos.lat, pos.lng).then(({ data, source }) => {
-      // Vérifier que la position n'a pas changé entre-temps
-      const current = useWeatherStore.getState().position;
-      if (current.lat === pos.lat && current.lng === pos.lng) {
-        set({ weatherData: data, dataSource: source });
-      }
-    });
+    set({ position: pos, isLoading: true, error: null, weatherData: null });
+    loadWeather(pos.lat, pos.lng)
+      .then((data) => {
+        // Ignorer si la position a changé entre-temps
+        if (get().position.lat === pos.lat && get().position.lng === pos.lng) {
+          set({ weatherData: data, isLoading: false });
+        }
+      })
+      .catch((err: unknown) => {
+        if (get().position.lat === pos.lat && get().position.lng === pos.lng) {
+          set({ isLoading: false, error: String(err) });
+        }
+      });
   },
 
-  setSelectedHour: (hour) => set({ selectedHour: hour }),
-  setDaySelection: (day) => set({ daySelection: day }),
-  setMaxAltitude: (alt) => set({ maxAltitude: alt }),
-  setShowParcelTrajectory: (show) => set({ showParcelTrajectory: show }),
-  setMobileTab: (tab) => set({ mobileTab: tab }),
+  setSelectedHour:        (hour) => set({ selectedHour: hour }),
+  setDaySelection:        (day)  => set({ daySelection: day }),
+  setMaxAltitude:         (alt)  => set({ maxAltitude: alt }),
+  setShowParcelTrajectory:(show) => set({ showParcelTrajectory: show }),
+  setMobileTab:           (tab)  => set({ mobileTab: tab }),
 }));
 
-// Chargement initial des données réelles au démarrage de l'app
-fetchWeatherDataWithFallback(DEFAULT_POSITION.lat, DEFAULT_POSITION.lng).then(
-  ({ data, source }) => useWeatherStore.setState({ weatherData: data, dataSource: source }),
-);
+// Chargement initial dès l'import du store
+loadWeather(DEFAULT_POSITION.lat, DEFAULT_POSITION.lng)
+  .then((data) => useWeatherStore.setState({ weatherData: data, isLoading: false }))
+  .catch((err: unknown) => useWeatherStore.setState({ isLoading: false, error: String(err) }));
