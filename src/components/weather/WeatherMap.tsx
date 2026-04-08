@@ -16,7 +16,7 @@ export function WeatherMap() {
       style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
       center: [position.lng, position.lat],
       zoom: 9,
-      attributionControl: true,
+      attributionControl: false,
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
