@@ -2,8 +2,19 @@ import { useWeatherStore } from '@/store/useWeatherStore';
 import { Button } from '@/components/ui/button';
 import type { DaySelection } from '@/types/weather';
 
+const sourceLabel: Record<string, string> = {
+  arome:   'AROME HD',
+  mock:    'Données simulées',
+  loading: 'Chargement…',
+};
+const sourceDot: Record<string, string> = {
+  arome:   'bg-green-500',
+  mock:    'bg-yellow-400',
+  loading: 'bg-gray-400 animate-pulse',
+};
+
 export function ControlBar() {
-  const { daySelection, setDaySelection } = useWeatherStore();
+  const { daySelection, setDaySelection, dataSource } = useWeatherStore();
 
   const today = new Date();
   const displayDate = new Date(today);
@@ -34,6 +45,12 @@ export function ControlBar() {
 
       {/* Date display */}
       <span className="text-xs font-medium text-muted-foreground">{dateStr}</span>
+
+      {/* Source indicator */}
+      <div className="ml-auto flex items-center gap-1.5">
+        <span className={`inline-block w-2 h-2 rounded-full ${sourceDot[dataSource] ?? sourceDot.loading}`} />
+        <span className="text-[10px] text-muted-foreground">{sourceLabel[dataSource] ?? dataSource}</span>
+      </div>
     </div>
   );
 }
