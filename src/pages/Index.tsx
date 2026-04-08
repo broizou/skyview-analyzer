@@ -44,11 +44,11 @@ const Index = () => {
         </div>
       ) : (
         <div className="flex flex-1 min-h-0">
-          {/* Analysis panel - left 40% */}
-          <div className="w-[40%] min-w-[350px] border-r border-border overflow-hidden">
+          {/* Analysis panel - left 60% */}
+          <div className="w-[60%] min-w-[400px] border-r border-border overflow-hidden">
             <AnalysisPanel />
           </div>
-          {/* Map - right 60% */}
+          {/* Map - right 40% */}
           <div className="flex-1 min-h-0">
             <WeatherMap />
           </div>
