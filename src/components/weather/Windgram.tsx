@@ -1,45 +1,41 @@
 import { useWeatherStore } from '@/store/useWeatherStore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
+import type { DayForecast } from '@/types/weather';
 
-// 8h → 21h inclusive
-const HOURS = Array.from({ length: 14 }, (_, i) => i + 8);
+const HOURS = Array.from({ length: 14 }, (_, i) => i + 8); // 8h → 21h
 
-/** Wind colour scale (km/h) */
+// ── Couleurs ─────────────────────────────────────────────────────────────────
 function getArrowColor(speedMs: number): string {
   const kmh = speedMs * 3.6;
-  if (kmh < 10) return '#60c4e0'; // bleu clair
-  if (kmh < 20) return '#4caf50'; // vert
-  if (kmh < 30) return '#ff9800'; // orange
-  return '#f44336';               // rouge
+  if (kmh < 10) return '#60c4e0';
+  if (kmh < 20) return '#4caf50';
+  if (kmh < 30) return '#ff9800';
+  return '#f44336';
 }
 
-/**
- * Arrow drawn in local space: tail at top, tip at bottom, then rotated by wind direction.
- * Size scales noticeably with speed: 5 px (calm) → 17 px (strong).
- */
+// ── Flèche : courte et épaisse, taille ∝ vitesse ─────────────────────────────
 function WindArrow({
   cx, cy, direction, speedMs, color,
 }: {
   cx: number; cy: number; direction: number; speedMs: number; color: string;
 }) {
   const kmh = speedMs * 3.6;
-  if (kmh < 0.5) return null;                            // calme, rien à dessiner
+  if (kmh < 0.5) return null;
 
-  const len    = Math.min(4 + Math.sqrt(kmh) * 2.4, 18); // 4 → 18 px
-  const headH  = len * 0.38;
-  const headW  = len * 0.34;
-  const shaft  = Math.min(1.3 + kmh / 28, 2.5);          // épaisseur proportionnelle
+  // Longueur 3 → 10 px, épaisseur 2.5 → 5 px
+  const len   = Math.min(3 + Math.sqrt(kmh) * 1.1, 10);
+  const headH = len * 0.40;
+  const headW = len * 0.42;
+  const shaft = Math.min(2.5 + kmh / 16, 5.0);
 
-  // tip vers le bas en espace local → pointe dans la direction du vent après rotation
   const tipY  =  len / 2;
   const tailY = -len / 2;
 
   return (
     <g transform={`translate(${cx},${cy}) rotate(${direction})`}>
       <line
-        x1={0} y1={tailY}
-        x2={0} y2={tipY - headH}
+        x1={0} y1={tailY} x2={0} y2={tipY - headH}
         stroke={color} strokeWidth={shaft} strokeLinecap="round"
       />
       <polygon
@@ -50,36 +46,73 @@ function WindArrow({
   );
 }
 
-/**
- * Courbe lissée (bezier) passant par les points de hauteur de couche limite.
- * Retourne un path SVG fermé.
- */
+// ── Lissage 2D du vent : noyau 3×3 pondéré ───────────────────────────────────
+interface SmoothedWind { speed: number; direction: number }
+
+function buildSmoothedWindMap(
+  forecast: DayForecast,
+  hours: number[],
+  altitudes: number[],
+): Map<string, SmoothedWind> {
+  // Poids : centre=4, voisins orthogonaux=2, diagonales=1
+  const kernel = [
+    { dh: -1, da: -1, w: 1 }, { dh: 0, da: -1, w: 2 }, { dh: 1, da: -1, w: 1 },
+    { dh: -1, da:  0, w: 2 }, { dh: 0, da:  0, w: 4 }, { dh: 1, da:  0, w: 2 },
+    { dh: -1, da:  1, w: 1 }, { dh: 0, da:  1, w: 2 }, { dh: 1, da:  1, w: 1 },
+  ];
+
+  const map = new Map<string, SmoothedWind>();
+
+  hours.forEach((h, hi) => {
+    altitudes.forEach((alt) => {
+      let totalW = 0, sumSpeed = 0, sumSin = 0, sumCos = 0;
+
+      kernel.forEach(({ dh, da, w }) => {
+        const nh = hours[hi + dh];
+        const na = alt + da * 100;
+        if (nh === undefined || na < 0) return;
+        const level = forecast.profiles[nh]?.levels.find((l) => l.altitude === na);
+        if (!level) return;
+        totalW   += w;
+        sumSpeed += level.wind.speed * w;
+        const rad = (level.wind.direction * Math.PI) / 180;
+        sumSin   += Math.sin(rad) * w;
+        sumCos   += Math.cos(rad) * w;
+      });
+
+      if (totalW > 0) {
+        map.set(`${h}-${alt}`, {
+          speed:     sumSpeed / totalW,
+          direction: ((Math.atan2(sumSin / totalW, sumCos / totalW) * 180) / Math.PI + 360) % 360,
+        });
+      }
+    });
+  });
+
+  return map;
+}
+
+// ── Courbe thermique lissée (bezier) ─────────────────────────────────────────
 function buildThermalPath(
   thermalData: Array<{ blh: number }>,
-  leftW: number,
-  cellW: number,
-  gridH: number,
-  maxAltitude: number,
+  leftW: number, cellW: number, gridH: number, maxAltitude: number,
 ): string {
   const pts = thermalData.map((d, i) => ({
     x: leftW + i * cellW + cellW / 2,
     y: (1 - Math.min(d.blh, maxAltitude) / maxAltitude) * gridH,
   }));
   if (pts.length === 0) return '';
-
-  // Courbe cubique : point de contrôle au milieu horizontal de chaque segment
   let d = `M${pts[0].x},${pts[0].y}`;
   for (let i = 1; i < pts.length; i++) {
-    const p = pts[i - 1];
-    const c = pts[i];
+    const p = pts[i - 1], c = pts[i];
     const mx = (p.x + c.x) / 2;
     d += ` C${mx},${p.y} ${mx},${c.y} ${c.x},${c.y}`;
   }
-  // Fermeture sur le sol
   d += ` L${pts[pts.length - 1].x},${gridH} L${pts[0].x},${gridH} Z`;
   return d;
 }
 
+// ── Composant principal ───────────────────────────────────────────────────────
 export function Windgram() {
   const {
     weatherData, daySelection, selectedHour,
@@ -94,32 +127,48 @@ export function Windgram() {
     [maxAltitude],
   );
 
+  // ── Hauteur dynamique via ResizeObserver ──────────────────────────────────
+  const svgContainerRef = useRef<HTMLDivElement>(null);
+  const [containerH, setContainerH] = useState(400);
+
+  useEffect(() => {
+    const el = svgContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setContainerH(entry.contentRect.height));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const thermalData = useMemo(() => {
     if (!forecast) return null;
     return HOURS.map((h) => ({ hour: h, blh: forecast.profiles[h].boundaryLayerHeight }));
   }, [forecast]);
 
-  if (!forecast || !thermalData) return null;
+  // Vent lissé
+  const smoothedWind = useMemo(
+    () => (forecast ? buildSmoothedWindMap(forecast, HOURS, altitudes) : null),
+    [forecast, altitudes],
+  );
 
-  // ── Dimensions ──────────────────────────────────────────────────────────────
-  // CELL_W réduit de ~20 % (54 → 43), CELL_H réduit pour tenir sur mobile (20 → 17)
+  if (!forecast || !thermalData || !smoothedWind) return null;
+
+  // ── Dimensions : CELL_H calculé pour remplir exactement l'espace disponible ─
   const CELL_W       = 43;
-  const CELL_H       = 17;
   const LEFT_W       = 44;
   const HOUR_LABEL_H = 20;
-  const gridW        = HOURS.length * CELL_W;
+  const CELL_H       = Math.max(8, Math.floor((containerH - HOUR_LABEL_H) / altitudes.length));
   const gridH        = altitudes.length * CELL_H;
-  const totalW       = LEFT_W + gridW;
+  const totalW       = LEFT_W + HOURS.length * CELL_W;
   const totalH       = gridH + HOUR_LABEL_H;
 
-  // Intensité thermique : basée sur le pic de la journée → opacité douce 0.12-0.32
+  // Intensité thermique
   const peakBLH           = Math.max(...thermalData.map((d) => d.blh));
   const thermalFillOpacity = 0.12 + Math.min(peakBLH / 2500, 1) * 0.20;
   const thermalPath        = buildThermalPath(thermalData, LEFT_W, CELL_W, gridH, maxAltitude);
 
   return (
     <div className="flex flex-col h-full">
-      {/* En-tête : altitude max + légende couleurs */}
+      {/* En-tête */}
       <div className="flex items-center gap-2 p-1.5 border-b border-border shrink-0">
         <span className="text-[11px] text-muted-foreground">Alt. max</span>
         <Select value={String(maxAltitude)} onValueChange={(v) => setMaxAltitude(Number(v))}>
@@ -130,7 +179,6 @@ export function Windgram() {
             ))}
           </SelectContent>
         </Select>
-
         <div className="flex items-center gap-2 ml-auto text-[10px] text-muted-foreground">
           {[
             { color: '#60c4e0', label: '<10' },
@@ -147,36 +195,36 @@ export function Windgram() {
         </div>
       </div>
 
-      {/* SVG — taille fixe, scroll horizontal si nécessaire, pas de scroll vertical */}
-      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
+      {/* Conteneur SVG : prend tout l'espace restant, scroll horizontal seulement */}
+      <div ref={svgContainerRef} className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
         <svg
           width={totalW}
-          height="100%"
+          height={containerH}
           viewBox={`0 0 ${totalW} ${totalH}`}
-          preserveAspectRatio="xMinYMin meet"
+          preserveAspectRatio="none"
           className="block select-none"
           style={{ minWidth: totalW }}
         >
-          {/* Zone thermique — courbe lissée, jaune pâle, intensité ∝ BLH max du jour */}
+          {/* Zone thermique */}
           <path d={thermalPath} fill="#fde047" opacity={thermalFillOpacity} />
 
-          {/* Lignes de grille horizontales tous les 500 m */}
+          {/* Grille 500 m */}
           {altitudes.map((alt, i) =>
             alt % 500 === 0 ? (
               <line
                 key={`g-${alt}`}
-                x1={LEFT_W}   y1={i * CELL_H + CELL_H / 2}
-                x2={totalW}   y2={i * CELL_H + CELL_H / 2}
+                x1={LEFT_W} y1={i * CELL_H + CELL_H / 2}
+                x2={totalW} y2={i * CELL_H + CELL_H / 2}
                 stroke="#ddd" strokeWidth={0.5}
               />
             ) : null,
           )}
 
-          {/* Colonne heure sélectionnée */}
+          {/* Colonne heure active */}
           {HOURS.includes(selectedHour) && (
             <rect
-              x={LEFT_W + HOURS.indexOf(selectedHour) * CELL_W}
-              y={0} width={CELL_W} height={gridH}
+              x={LEFT_W + HOURS.indexOf(selectedHour) * CELL_W} y={0}
+              width={CELL_W} height={gridH}
               fill="hsl(var(--primary) / 0.07)"
             />
           )}
@@ -186,8 +234,7 @@ export function Windgram() {
             alt % 500 === 0 ? (
               <text
                 key={`a-${alt}`}
-                x={LEFT_W - 5}
-                y={i * CELL_H + CELL_H / 2 + 3.5}
+                x={LEFT_W - 5} y={i * CELL_H + CELL_H / 2 + 3.5}
                 textAnchor="end" fontSize={10} fill="#888" fontFamily="system-ui"
               >
                 {alt}
@@ -195,39 +242,36 @@ export function Windgram() {
             ) : null,
           )}
 
-          {/* Flèches de vent + vitesse */}
-          {HOURS.map((h, hIdx) => {
-            const profile = forecast.profiles[h];
-            return altitudes.map((alt, aIdx) => {
-              const level = profile.levels.find((l) => l.altitude === alt);
-              if (!level) return null;
+          {/* Flèches + valeurs lissées */}
+          {HOURS.map((h, hIdx) =>
+            altitudes.map((alt, aIdx) => {
+              const wind = smoothedWind.get(`${h}-${alt}`);
+              if (!wind) return null;
               const cx       = LEFT_W + hIdx * CELL_W + CELL_W / 2;
               const cy       = aIdx * CELL_H + CELL_H / 2;
-              const color    = getArrowColor(level.wind.speed);
-              const speedKmh = Math.round(level.wind.speed * 3.6);
+              const color    = getArrowColor(wind.speed);
+              const speedKmh = Math.round(wind.speed * 3.6);
 
               return (
                 <g key={`c-${h}-${alt}`}>
-                  {/* Flèche dont la taille est proportionnelle à la vitesse */}
                   <WindArrow
                     cx={cx - 7} cy={cy}
-                    direction={level.wind.direction}
-                    speedMs={level.wind.speed}
+                    direction={wind.direction}
+                    speedMs={wind.speed}
                     color={color}
                   />
-                  {/* Valeur numérique */}
                   <text
-                    x={cx + 5} y={cy + 3.5}
+                    x={cx + 4} y={cy + 3.5}
                     fontSize={8} fill={color} fontWeight={500} fontFamily="system-ui"
                   >
                     {speedKmh}
                   </text>
                 </g>
               );
-            });
-          })}
+            }),
+          )}
 
-          {/* Labels heures — cliquables */}
+          {/* Labels heures */}
           {HOURS.map((h, i) => (
             <text
               key={`hl-${h}`}
@@ -245,7 +289,7 @@ export function Windgram() {
             </text>
           ))}
 
-          {/* Zones de clic invisibles sur les colonnes */}
+          {/* Zones de clic colonnes */}
           {HOURS.map((h, i) => (
             <rect
               key={`click-${h}`}
