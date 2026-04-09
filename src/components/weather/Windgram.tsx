@@ -221,6 +221,10 @@ export function Windgram() {
         >
           {/* Zone thermique */}
           <path d={thermalPath} fill="#fde047" opacity={thermalFillOpacity} />
+          {/* Courbe sommet thermique */}
+          {thermalLineD && (
+            <path d={thermalLineD} fill="none" stroke="#e6a700" strokeWidth={2} strokeLinecap="round" />
+          )}
 
           {/* Grille 500 m */}
           {altitudes.map((alt, i) =>
