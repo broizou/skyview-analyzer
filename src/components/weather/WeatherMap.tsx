@@ -47,7 +47,7 @@ export function WeatherMap() {
       style: OTOPO_STYLE,
       center: [position.lng, position.lat],
       zoom: 10,
-      attributionControl: true,
+      attributionControl: {},
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
