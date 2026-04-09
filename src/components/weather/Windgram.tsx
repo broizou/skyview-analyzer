@@ -163,9 +163,23 @@ export function Windgram() {
 
   // Intensité thermique
   const peakBLH           = Math.max(...thermalData.map((d) => d.blh));
-  const thermalFillOpacity = 0.12 + Math.min(peakBLH / 2500, 1) * 0.20;
+  const thermalFillOpacity = 0.18 + Math.min(peakBLH / 2500, 1) * 0.25;
   const thermalPath        = buildThermalPath(thermalData, LEFT_W, CELL_W, gridH, maxAltitude);
 
+  // Courbe du sommet thermique (juste la ligne, pas la zone remplie)
+  const thermalLinePts = thermalData.map((d, i) => ({
+    x: LEFT_W + i * CELL_W + CELL_W / 2,
+    y: (1 - Math.min(d.blh, maxAltitude) / maxAltitude) * gridH,
+  }));
+  let thermalLineD = '';
+  if (thermalLinePts.length > 0) {
+    thermalLineD = `M${thermalLinePts[0].x},${thermalLinePts[0].y}`;
+    for (let i = 1; i < thermalLinePts.length; i++) {
+      const p = thermalLinePts[i - 1], c = thermalLinePts[i];
+      const mx = (p.x + c.x) / 2;
+      thermalLineD += ` C${mx},${p.y} ${mx},${c.y} ${c.x},${c.y}`;
+    }
+  }
   return (
     <div className="flex flex-col h-full">
       {/* En-tête */}
@@ -207,6 +221,10 @@ export function Windgram() {
         >
           {/* Zone thermique */}
           <path d={thermalPath} fill="#fde047" opacity={thermalFillOpacity} />
+          {/* Courbe sommet thermique */}
+          {thermalLineD && (
+            <path d={thermalLineD} fill="none" stroke="#e6a700" strokeWidth={2} strokeLinecap="round" />
+          )}
 
           {/* Grille 500 m */}
           {altitudes.map((alt, i) =>
