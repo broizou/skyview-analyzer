@@ -8,10 +8,11 @@ const HOURS = Array.from({ length: 14 }, (_, i) => i + 8); // 8h → 21h
 // ── Couleurs ─────────────────────────────────────────────────────────────────
 function getArrowColor(speedMs: number): string {
   const kmh = speedMs * 3.6;
-  if (kmh < 10) return '#60c4e0';
-  if (kmh < 20) return '#4caf50';
-  if (kmh < 30) return '#ff9800';
-  return '#f44336';
+  if (kmh <  5) return '#60c4e0'; // bleu clair
+  if (kmh < 15) return '#4caf50'; // vert
+  if (kmh < 25) return '#ff9800'; // orange
+  if (kmh < 35) return '#f44336'; // rouge
+  return '#9c27b0';               // violet
 }
 
 // ── Flèche : courte et épaisse, taille ∝ vitesse ─────────────────────────────
