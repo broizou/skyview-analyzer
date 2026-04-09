@@ -193,20 +193,6 @@ export function Windgram() {
             ))}
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-2 ml-auto text-[10px] text-muted-foreground">
-          {[
-            { color: '#60c4e0', label: '<10' },
-            { color: '#4caf50', label: '<20' },
-            { color: '#ff9800', label: '<30' },
-            { color: '#f44336', label: '30+' },
-          ].map(({ color, label }) => (
-            <span key={label} className="flex items-center gap-0.5">
-              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
-              {label}
-            </span>
-          ))}
-          <span className="text-[9px]">km/h</span>
-        </div>
       </div>
 
       {/* Conteneur SVG : prend tout l'espace restant, scroll horizontal seulement */}
@@ -236,15 +222,6 @@ export function Windgram() {
                 stroke="#ddd" strokeWidth={0.5}
               />
             ) : null,
-          )}
-
-          {/* Colonne heure active */}
-          {HOURS.includes(selectedHour) && (
-            <rect
-              x={LEFT_W + HOURS.indexOf(selectedHour) * CELL_W} y={0}
-              width={CELL_W} height={gridH}
-              fill="hsl(var(--primary) / 0.07)"
-            />
           )}
 
           {/* Labels altitude */}

@@ -16,10 +16,7 @@ const OTOPO_STYLE: maplibregl.StyleSpecification = {
       ],
       tileSize: 256,
       maxzoom: 17,
-      attribution:
-        'Kartendaten: © <a href="https://openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>-Mitwirkende, ' +
-        'SRTM | Kartendarstellung: © <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> ' +
-        '(<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank">CC-BY-SA</a>)',
+      attribution: '',
     },
   },
   layers: [
@@ -47,7 +44,7 @@ export function WeatherMap() {
       style: OTOPO_STYLE,
       center: [position.lng, position.lat],
       zoom: 10,
-      attributionControl: {},
+      attributionControl: false,
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');

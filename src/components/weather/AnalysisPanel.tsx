@@ -29,36 +29,32 @@ export function AnalysisPanel() {
 
   return (
     <div className="flex flex-col h-full bg-card">
-      <div className="px-3 py-1.5 border-b border-border flex items-center gap-2 shrink-0">
-        <span className="text-xs font-semibold">Analyse</span>
-        <span className="text-[10px] text-muted-foreground">
-          {position.lat.toFixed(3)}°N, {position.lng.toFixed(3)}°E
-        </span>
-        {isLoading && (
-          <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
-            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-            </svg>
-            AROME…
-          </span>
-        )}
-      </div>
-
       {isLoading && !error ? (
         <Spinner />
       ) : error ? (
         <ErrorPanel message={error} />
       ) : (
         <Tabs defaultValue="windgram" className="flex flex-col flex-1 min-h-0">
-          <TabsList className="mx-2 mt-1 w-fit shrink-0">
-            <TabsTrigger value="windgram" className="text-xs">Windgram</TabsTrigger>
-            <TabsTrigger value="emagram" className="text-xs">Émagramme</TabsTrigger>
-          </TabsList>
-          <TabsContent value="windgram" className="flex-1 min-h-0 overflow-hidden">
+          {/* Barre compacte : onglets + coordonnées + spinner inline */}
+          <div className="flex items-center gap-2 px-2 pt-1 pb-0 shrink-0 border-b border-border">
+            <TabsList className="h-7">
+              <TabsTrigger value="windgram" className="text-xs h-6">Windgram</TabsTrigger>
+              <TabsTrigger value="emagram" className="text-xs h-6">Émagramme</TabsTrigger>
+            </TabsList>
+            <span className="text-[10px] text-muted-foreground">
+              {position.lat.toFixed(3)}°N, {position.lng.toFixed(3)}°E
+            </span>
+            {isLoading && (
+              <svg className="animate-spin h-3 w-3 ml-auto text-muted-foreground" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            )}
+          </div>
+          <TabsContent value="windgram" className="flex-1 min-h-0 overflow-hidden mt-0">
             <Windgram />
           </TabsContent>
-          <TabsContent value="emagram" className="flex-1 min-h-0 overflow-hidden">
+          <TabsContent value="emagram" className="flex-1 min-h-0 overflow-hidden mt-0">
             <Emagram />
           </TabsContent>
         </Tabs>
