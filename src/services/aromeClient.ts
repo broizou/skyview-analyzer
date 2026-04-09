@@ -63,7 +63,7 @@ export async function fetchEcmwfBLH(
     latitude:      lat.toFixed(4),
     longitude:     lng.toFixed(4),
     hourly:        'boundary_layer_height',
-    models:        'ecmwf_ifs025',
+    models:        'icon_eu',
     forecast_days: '2',
     timezone:      'Europe/Paris',
   });
@@ -72,7 +72,7 @@ export async function fetchEcmwfBLH(
     `https://api.open-meteo.com/v1/forecast?${params}`,
     { signal: signal ?? AbortSignal.timeout(20_000) },
   );
-  if (!res.ok) throw new Error(`ECMWF BLH HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`ICON-EU BLH HTTP ${res.status}`);
 
   const json = await res.json() as { hourly: { time: string[]; boundary_layer_height: (number | null)[] } };
   const map  = new Map<string, number>();

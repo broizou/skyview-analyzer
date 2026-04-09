@@ -50,7 +50,7 @@ export const useWeatherStore = create<WeatherState>((set) => ({
     // Les deux fetches partent en parallèle — ECMWF peut échouer silencieusement
     Promise.all([
       fetchAromeData(pos.lat, pos.lng, signal),
-      fetchEcmwfBLH(pos.lat, pos.lng, signal).catch(() => undefined),
+      fetchEcmwfBLH(pos.lat, pos.lng, signal).catch((e) => { console.warn('BLH fetch failed:', e); return undefined; }),
     ])
       .then(([raw, blhMap]) => {
         if (signal.aborted) return;
