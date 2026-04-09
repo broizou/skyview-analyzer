@@ -23,6 +23,8 @@ const LEVEL_VARS = [
 const SURFACE_VARS = [
   'temperature_2m',
   'dewpoint_2m',
+  'windspeed_10m',
+  'winddirection_10m',
   'precipitation',
   'cloudcover_low',
   'cloudcover_mid',

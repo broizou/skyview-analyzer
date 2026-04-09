@@ -76,7 +76,22 @@ function buildVerticalProfile(
   }));
 
   // Trier par altitude croissante (les niveaux de pression décroissants donnent des altitudes croissantes)
-  const sorted = raw.filter((r) => r.alt > 0).sort((a, b) => a.alt - b.alt);
+  const pressureSorted = raw.filter((r) => r.alt > 0).sort((a, b) => a.alt - b.alt);
+
+  // Ancrer le profil avec le vent de surface (10 m) — évite que les basses
+  // altitudes soient extrapolées depuis le premier niveau de pression (~500 m
+  // pour un terrain à 200 m d'altitude comme Grenoble).
+  const surf10m = {
+    alt:  10,
+    temp: val(hourly, 'temperature_2m', idx),
+    rh:   50, // non critique pour le vent
+    wspd: val(hourly, 'windspeed_10m', idx),
+    wdir: val(hourly, 'winddirection_10m', idx),
+  };
+  // N'insérer que si aucun niveau de pression n'est déjà sous 50 m
+  const sorted = (pressureSorted[0]?.alt ?? Infinity) > 50
+    ? [surf10m, ...pressureSorted]
+    : pressureSorted;
   if (sorted.length < 2) return TARGET_ALTITUDES.map((altitude) => ({
     altitude, temperature: 15, dewpoint: 5,
     wind: { speed: 0, direction: 0 }, humidity: 50, cloudCover: 0,
