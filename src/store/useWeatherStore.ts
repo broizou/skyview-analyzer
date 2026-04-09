@@ -24,46 +24,49 @@ interface WeatherState {
 
 const DEFAULT_POSITION: Position = { lat: 45.19, lng: 5.73 }; // Grenoble
 
-async function loadWeather(lat: number, lng: number): Promise<WeatherData> {
-  const raw = await fetchAromeData(lat, lng);
-  return normalizeAromeResponse(raw, lat, lng);
-}
+// AbortController du fetch en cours — annule toute requête précédente
+// quand l'utilisateur change de position avant la fin du chargement.
+let currentAbort: AbortController | null = null;
 
-export const useWeatherStore = create<WeatherState>((set, get) => ({
-  position:            DEFAULT_POSITION,
-  selectedHour:        12,
-  daySelection:        'today',
-  maxAltitude:         3000,
-  weatherData:         null,
-  isLoading:           true,
-  error:               null,
+export const useWeatherStore = create<WeatherState>((set) => ({
+  position:             DEFAULT_POSITION,
+  selectedHour:         12,
+  daySelection:         'today',
+  maxAltitude:          3000,
+  weatherData:          null,
+  isLoading:            true,
+  error:                null,
   showParcelTrajectory: false,
-  mobileTab:           'analysis',
+  mobileTab:            'analysis',
 
   setPosition: (pos) => {
+    // Annuler le fetch précédent s'il est encore en cours
+    currentAbort?.abort();
+    currentAbort = new AbortController();
+    const { signal } = currentAbort;
+
     set({ position: pos, isLoading: true, error: null, weatherData: null });
-    loadWeather(pos.lat, pos.lng)
-      .then((data) => {
-        // Ignorer si la position a changé entre-temps
-        if (get().position.lat === pos.lat && get().position.lng === pos.lng) {
-          set({ weatherData: data, isLoading: false });
-        }
+
+    fetchAromeData(pos.lat, pos.lng, signal)
+      .then((raw) => {
+        if (signal.aborted) return;
+        const data = normalizeAromeResponse(raw, pos.lat, pos.lng);
+        set({ weatherData: data, isLoading: false });
       })
       .catch((err: unknown) => {
-        if (get().position.lat === pos.lat && get().position.lng === pos.lng) {
-          set({ isLoading: false, error: String(err) });
-        }
+        // Ignorer les erreurs d'annulation volontaire
+        if (signal.aborted) return;
+        set({ isLoading: false, error: String(err) });
       });
   },
 
-  setSelectedHour:        (hour) => set({ selectedHour: hour }),
-  setDaySelection:        (day)  => set({ daySelection: day }),
-  setMaxAltitude:         (alt)  => set({ maxAltitude: alt }),
-  setShowParcelTrajectory:(show) => set({ showParcelTrajectory: show }),
-  setMobileTab:           (tab)  => set({ mobileTab: tab }),
+  setSelectedHour:         (hour) => set({ selectedHour: hour }),
+  setDaySelection:         (day)  => set({ daySelection: day }),
+  setMaxAltitude:          (alt)  => set({ maxAltitude: alt }),
+  setShowParcelTrajectory: (show) => set({ showParcelTrajectory: show }),
+  setMobileTab:            (tab)  => set({ mobileTab: tab }),
 }));
 
-// Chargement initial dès l'import du store
-loadWeather(DEFAULT_POSITION.lat, DEFAULT_POSITION.lng)
-  .then((data) => useWeatherStore.setState({ weatherData: data, isLoading: false }))
-  .catch((err: unknown) => useWeatherStore.setState({ isLoading: false, error: String(err) }));
+// Chargement initial — passe par setPosition pour bénéficier de la
+// même logique d'annulation que les clics utilisateur.
+useWeatherStore.getState().setPosition(DEFAULT_POSITION);

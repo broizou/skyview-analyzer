@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "Bash(del \"C:\\\\Users\\\\Ambroise\\\\Documents\\\\GitHub\\\\skyview-analyzer\\\\src\\\\services\\\\weatherApi.ts\")"
+    ]
+  }
+}

@@ -53,6 +53,7 @@ export function Emagram() {
   if (!forecast) return null;
 
   const profile = forecast.profiles[selectedHour];
+  if (!profile) return null;
   const levels = profile.levels.filter((l) => l.altitude <= 5000);
 
   // Diagram dimensions

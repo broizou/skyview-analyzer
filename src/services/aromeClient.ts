@@ -48,7 +48,11 @@ export interface OpenMeteoResponse {
   hourly: OpenMeteoHourly;
 }
 
-export async function fetchAromeData(lat: number, lng: number): Promise<OpenMeteoResponse> {
+export async function fetchAromeData(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+): Promise<OpenMeteoResponse> {
   const params = new URLSearchParams({
     latitude:        lat.toFixed(4),
     longitude:       lng.toFixed(4),
@@ -60,7 +64,8 @@ export async function fetchAromeData(lat: number, lng: number): Promise<OpenMete
   });
 
   const url = `https://api.open-meteo.com/v1/forecast?${params}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  // Utilise le signal externe (annulation) ou un timeout de 20 s par défaut
+  const res = await fetch(url, { signal: signal ?? AbortSignal.timeout(20_000) });
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');

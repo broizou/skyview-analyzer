@@ -141,7 +141,7 @@ export function Windgram() {
 
   const thermalData = useMemo(() => {
     if (!forecast) return null;
-    return HOURS.map((h) => ({ hour: h, blh: forecast.profiles[h].boundaryLayerHeight }));
+    return HOURS.map((h) => ({ hour: h, blh: forecast.profiles[h]?.boundaryLayerHeight ?? 0 }));
   }, [forecast]);
 
   // Vent lissé
@@ -165,6 +165,28 @@ export function Windgram() {
   const peakBLH           = Math.max(...thermalData.map((d) => d.blh));
   const thermalFillOpacity = 0.18 + Math.min(peakBLH / 2500, 1) * 0.25;
   const thermalPath        = buildThermalPath(thermalData, LEFT_W, CELL_W, gridH, maxAltitude);
+
+  // 714 cellules vent mémoïsées — ne recalculées que si le vent ou les dimensions changent
+  const windCells = useMemo(() =>
+    HOURS.flatMap((h, hIdx) =>
+      altitudes.map((alt, aIdx) => {
+        const wind = smoothedWind.get(`${h}-${alt}`);
+        if (!wind) return null;
+        const cx       = LEFT_W + hIdx * CELL_W + CELL_W / 2;
+        const cy       = aIdx * CELL_H + CELL_H / 2;
+        const color    = getArrowColor(wind.speed);
+        const speedKmh = Math.round(wind.speed * 3.6);
+        return (
+          <g key={`c-${h}-${alt}`}>
+            <WindArrow cx={cx - 7} cy={cy} direction={wind.direction} speedMs={wind.speed} color={color} />
+            <text x={cx + 4} y={cy + 3.5} fontSize={8} fill={color} fontWeight={500} fontFamily="system-ui">
+              {speedKmh}
+            </text>
+          </g>
+        );
+      }),
+    ),
+  [smoothedWind, altitudes, CELL_H, CELL_W, LEFT_W]);
 
   // Courbe du sommet thermique (juste la ligne, pas la zone remplie)
   const thermalLinePts = thermalData.map((d, i) => ({
@@ -237,34 +259,8 @@ export function Windgram() {
             ) : null,
           )}
 
-          {/* Flèches + valeurs lissées */}
-          {HOURS.map((h, hIdx) =>
-            altitudes.map((alt, aIdx) => {
-              const wind = smoothedWind.get(`${h}-${alt}`);
-              if (!wind) return null;
-              const cx       = LEFT_W + hIdx * CELL_W + CELL_W / 2;
-              const cy       = aIdx * CELL_H + CELL_H / 2;
-              const color    = getArrowColor(wind.speed);
-              const speedKmh = Math.round(wind.speed * 3.6);
-
-              return (
-                <g key={`c-${h}-${alt}`}>
-                  <WindArrow
-                    cx={cx - 7} cy={cy}
-                    direction={wind.direction}
-                    speedMs={wind.speed}
-                    color={color}
-                  />
-                  <text
-                    x={cx + 4} y={cy + 3.5}
-                    fontSize={8} fill={color} fontWeight={500} fontFamily="system-ui"
-                  >
-                    {speedKmh}
-                  </text>
-                </g>
-              );
-            }),
-          )}
+          {/* Flèches + valeurs lissées — mémoïsées (714 éléments) */}
+          {windCells}
 
           {/* Labels heures */}
           {HOURS.map((h, i) => (
