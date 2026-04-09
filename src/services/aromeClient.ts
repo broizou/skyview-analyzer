@@ -48,6 +48,41 @@ export interface OpenMeteoResponse {
   hourly: OpenMeteoHourly;
 }
 
+/**
+ * Fetch ECMWF IFS HRES (0.25°, ~9 km natif) via Open-Meteo pour la seule
+ * variable boundary_layer_height, non fournie par AROME.
+ *
+ * Retourne une Map { "YYYY-MM-DDTHH:00" → hauteur en mètres }.
+ */
+export async function fetchEcmwfBLH(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+): Promise<Map<string, number>> {
+  const params = new URLSearchParams({
+    latitude:      lat.toFixed(4),
+    longitude:     lng.toFixed(4),
+    hourly:        'boundary_layer_height',
+    models:        'ecmwf_ifs025',
+    forecast_days: '2',
+    timezone:      'Europe/Paris',
+  });
+
+  const res = await fetch(
+    `https://api.open-meteo.com/v1/forecast?${params}`,
+    { signal: signal ?? AbortSignal.timeout(20_000) },
+  );
+  if (!res.ok) throw new Error(`ECMWF BLH HTTP ${res.status}`);
+
+  const json = await res.json() as { hourly: { time: string[]; boundary_layer_height: (number | null)[] } };
+  const map  = new Map<string, number>();
+  json.hourly.time.forEach((t, i) => {
+    const v = json.hourly.boundary_layer_height[i];
+    if (v != null && v > 0) map.set(t, v);
+  });
+  return map;
+}
+
 export async function fetchAromeData(
   lat: number,
   lng: number,

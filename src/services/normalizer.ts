@@ -108,16 +108,23 @@ function buildHourlyProfile(
   hourly: Record<string, (number | null)[] | string[]>,
   idx: number,
   hour: number,
+  timeStr: string,
+  blhMap?: Map<string, number>,
 ): HourlyProfile {
+  // Priorité : BLH ECMWF si disponible, sinon AROME (souvent 0), sinon 50 m plancher
+  const blhEcmwf = blhMap?.get(timeStr);
+  const blhArome = val(hourly, 'boundary_layer_height', idx);
+  const boundaryLayerHeight = Math.max(50, blhEcmwf ?? blhArome);
+
   return {
     hour,
-    levels:               buildVerticalProfile(hourly, idx),
-    precipitation:        val(hourly, 'precipitation', idx),
-    cloudLow:             val(hourly, 'cloudcover_low',  idx) / 100,
-    cloudMid:             val(hourly, 'cloudcover_mid',  idx) / 100,
-    cloudHigh:            val(hourly, 'cloudcover_high', idx) / 100,
-    surfaceTemp:          val(hourly, 'temperature_2m', idx),
-    boundaryLayerHeight:  Math.max(50, val(hourly, 'boundary_layer_height', idx)),
+    levels:              buildVerticalProfile(hourly, idx),
+    precipitation:       val(hourly, 'precipitation', idx),
+    cloudLow:            val(hourly, 'cloudcover_low',  idx) / 100,
+    cloudMid:            val(hourly, 'cloudcover_mid',  idx) / 100,
+    cloudHigh:           val(hourly, 'cloudcover_high', idx) / 100,
+    surfaceTemp:         val(hourly, 'temperature_2m', idx),
+    boundaryLayerHeight,
   };
 }
 
@@ -127,16 +134,17 @@ export function normalizeAromeResponse(
   raw: OpenMeteoResponse,
   lat: number,
   lng: number,
+  blhMap?: Map<string, number>,
 ): WeatherData {
   const times = raw.hourly.time as string[];
 
   // Grouper les indices par date locale "YYYY-MM-DD"
-  const byDate = new Map<string, { idx: number; hour: number }[]>();
+  const byDate = new Map<string, { idx: number; hour: number; timeStr: string }[]>();
   times.forEach((t, idx) => {
-    const [date, timeStr] = t.split('T');
-    const hour = parseInt(timeStr.split(':')[0], 10);
+    const [date, timePart] = t.split('T');
+    const hour = parseInt(timePart.split(':')[0], 10);
     if (!byDate.has(date)) byDate.set(date, []);
-    byDate.get(date)!.push({ idx, hour });
+    byDate.get(date)!.push({ idx, hour, timeStr: t });
   });
 
   const dates = [...byDate.keys()].sort().slice(0, 2);
@@ -146,8 +154,8 @@ export function normalizeAromeResponse(
 
     // Map heure → profil
     const profileMap = new Map<number, HourlyProfile>();
-    entries.forEach(({ idx, hour }) => {
-      profileMap.set(hour, buildHourlyProfile(raw.hourly, idx, hour));
+    entries.forEach(({ idx, hour, timeStr }) => {
+      profileMap.set(hour, buildHourlyProfile(raw.hourly, idx, hour, timeStr, blhMap));
     });
 
     // Garantir 24 profils (copie du voisin le plus proche si heure manquante)

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Position, WeatherData, DaySelection } from '@/types/weather';
-import { fetchAromeData } from '@/services/aromeClient';
+import { fetchAromeData, fetchEcmwfBLH } from '@/services/aromeClient';
 import { normalizeAromeResponse } from '@/services/normalizer';
 
 interface WeatherState {
@@ -47,14 +47,17 @@ export const useWeatherStore = create<WeatherState>((set) => ({
 
     set({ position: pos, isLoading: true, error: null, weatherData: null });
 
-    fetchAromeData(pos.lat, pos.lng, signal)
-      .then((raw) => {
+    // Les deux fetches partent en parallèle — ECMWF peut échouer silencieusement
+    Promise.all([
+      fetchAromeData(pos.lat, pos.lng, signal),
+      fetchEcmwfBLH(pos.lat, pos.lng, signal).catch(() => undefined),
+    ])
+      .then(([raw, blhMap]) => {
         if (signal.aborted) return;
-        const data = normalizeAromeResponse(raw, pos.lat, pos.lng);
+        const data = normalizeAromeResponse(raw, pos.lat, pos.lng, blhMap);
         set({ weatherData: data, isLoading: false });
       })
       .catch((err: unknown) => {
-        // Ignorer les erreurs d'annulation volontaire
         if (signal.aborted) return;
         set({ isLoading: false, error: String(err) });
       });
