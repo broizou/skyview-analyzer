@@ -204,5 +204,5 @@ export function normalizeAromeResponse(
     return { date: new Date(dateStr), profiles };
   });
 
-  return { position: { lat, lng }, forecasts };
+  return { position: { lat, lng }, elevation: z_sfc, forecasts };
 }

@@ -54,6 +54,7 @@ function buildSmoothedWindMap(
   forecast: DayForecast,
   hours: number[],
   altitudes: number[],
+  minAlt: number,
 ): Map<string, SmoothedWind> {
   // Poids : centre=4, voisins orthogonaux=2, diagonales=1
   const kernel = [
@@ -71,7 +72,7 @@ function buildSmoothedWindMap(
       kernel.forEach(({ dh, da, w }) => {
         const nh = hours[hi + dh];
         const na = alt + da * 100;
-        if (nh === undefined || na < 0) return;
+        if (nh === undefined || na < minAlt) return;
         const level = forecast.profiles[nh]?.levels.find((l) => l.altitude === na);
         if (!level) return;
         totalW   += w;
@@ -123,9 +124,15 @@ export function Windgram() {
   const dayIdx  = daySelection === 'today' ? 0 : 1;
   const forecast = weatherData?.forecasts[dayIdx];
 
+  // Altitude plancher = élévation terrain arrondie à 100 m vers le bas
+  const terrainAlt = Math.floor((weatherData?.elevation ?? 0) / 100) * 100;
+
   const altitudes = useMemo(
-    () => Array.from({ length: maxAltitude / 100 + 1 }, (_, i) => i * 100).reverse(),
-    [maxAltitude],
+    () => Array.from(
+      { length: (maxAltitude - terrainAlt) / 100 + 1 },
+      (_, i) => terrainAlt + i * 100,
+    ).reverse(),
+    [maxAltitude, terrainAlt],
   );
 
   // ── Hauteur dynamique via ResizeObserver ──────────────────────────────────
@@ -147,8 +154,8 @@ export function Windgram() {
 
   // Vent lissé
   const smoothedWind = useMemo(
-    () => (forecast ? buildSmoothedWindMap(forecast, HOURS, altitudes) : null),
-    [forecast, altitudes],
+    () => (forecast ? buildSmoothedWindMap(forecast, HOURS, altitudes, terrainAlt) : null),
+    [forecast, altitudes, terrainAlt],
   );
 
   if (!forecast || !thermalData || !smoothedWind) return null;
@@ -258,6 +265,16 @@ export function Windgram() {
                 {alt}
               </text>
             ) : null,
+          )}
+
+          {/* Label élévation terrain — affiché en bas à gauche si > 0 */}
+          {terrainAlt > 0 && (
+            <text
+              x={LEFT_W - 5} y={gridH - 2}
+              textAnchor="end" fontSize={9} fill="#a0522d" fontWeight={600} fontFamily="system-ui"
+            >
+              {weatherData!.elevation}m
+            </text>
           )}
 
           {/* Flèches + valeurs lissées — mémoïsées (714 éléments) */}

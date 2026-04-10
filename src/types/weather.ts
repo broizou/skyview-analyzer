@@ -34,7 +34,8 @@ export interface DayForecast {
 }
 
 export interface WeatherData {
-  position: Position;
+  position:  Position;
+  elevation: number; // terrain elevation (m MSL) from Open-Meteo
   forecasts: DayForecast[];
 }
 
