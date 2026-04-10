@@ -60,6 +60,27 @@ function val(
   return arr?.[idx] ?? 0;
 }
 
+// ── Plafond thermique (méthode sondage + adiabatique sèche) ──────────────────
+//
+// Altitude où un parcel partant de la surface (T_s à z_sfc) refroidi à 9.8 °C/km
+// devient plus froid que l'environnement → il cesse d'être porteur.
+// C'est la même méthode que Windy, et elle dépasse souvent la BLH météo.
+function calcThermalCeiling(
+  levels: VerticalLevel[],
+  T_surface: number,
+  z_sfc: number,
+): number {
+  const DALR = 9.8 / 1000; // °C par mètre
+  let ceiling = z_sfc;
+  for (const level of levels) {
+    if (level.altitude <= z_sfc) continue;
+    const T_parcel = T_surface - DALR * (level.altitude - z_sfc);
+    if (T_parcel <= level.temperature) break;
+    ceiling = level.altitude;
+  }
+  return Math.max(ceiling, z_sfc + 50);
+}
+
 // ── Profil vertical pour un index temporel donné ──────────────────────────────
 
 function buildVerticalProfile(
@@ -123,22 +144,20 @@ function buildHourlyProfile(
   hourly: Record<string, (number | null)[] | string[]>,
   idx: number,
   hour: number,
-  timeStr: string,
-  blhMap?: Map<string, number>,
+  z_sfc: number,
 ): HourlyProfile {
-  // Priorité : BLH ECMWF si disponible, sinon AROME (souvent 0), sinon 50 m plancher
-  const blhEcmwf = blhMap?.get(timeStr);
-  const blhArome = val(hourly, 'boundary_layer_height', idx);
-  const boundaryLayerHeight = Math.max(50, blhEcmwf ?? blhArome);
+  const T_surface = val(hourly, 'temperature_2m', idx);
+  const levels    = buildVerticalProfile(hourly, idx);
+  const boundaryLayerHeight = calcThermalCeiling(levels, T_surface, z_sfc);
 
   return {
     hour,
-    levels:              buildVerticalProfile(hourly, idx),
-    precipitation:       val(hourly, 'precipitation', idx),
-    cloudLow:            val(hourly, 'cloudcover_low',  idx) / 100,
-    cloudMid:            val(hourly, 'cloudcover_mid',  idx) / 100,
-    cloudHigh:           val(hourly, 'cloudcover_high', idx) / 100,
-    surfaceTemp:         val(hourly, 'temperature_2m', idx),
+    levels,
+    precipitation: val(hourly, 'precipitation', idx),
+    cloudLow:      val(hourly, 'cloudcover_low',  idx) / 100,
+    cloudMid:      val(hourly, 'cloudcover_mid',  idx) / 100,
+    cloudHigh:     val(hourly, 'cloudcover_high', idx) / 100,
+    surfaceTemp:   T_surface,
     boundaryLayerHeight,
   };
 }
@@ -149,8 +168,8 @@ export function normalizeAromeResponse(
   raw: OpenMeteoResponse,
   lat: number,
   lng: number,
-  blhMap?: Map<string, number>,
 ): WeatherData {
+  const z_sfc = raw.elevation ?? 0;
   const times = raw.hourly.time as string[];
 
   // Grouper les indices par date locale "YYYY-MM-DD"
@@ -170,7 +189,7 @@ export function normalizeAromeResponse(
     // Map heure → profil
     const profileMap = new Map<number, HourlyProfile>();
     entries.forEach(({ idx, hour, timeStr }) => {
-      profileMap.set(hour, buildHourlyProfile(raw.hourly, idx, hour, timeStr, blhMap));
+      profileMap.set(hour, buildHourlyProfile(raw.hourly, idx, hour, z_sfc));
     });
 
     // Garantir 24 profils (copie du voisin le plus proche si heure manquante)
