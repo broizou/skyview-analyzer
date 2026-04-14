@@ -123,14 +123,17 @@ function buildHourlyProfile(
   hourly: Record<string, (number | null)[] | string[]>,
   idx: number,
   hour: number,
-  timeStr: string,
   z_sfc: number,
-  blhMap?: Map<string, number>,
 ): HourlyProfile {
-  // BLH from Open-Meteo is AGL; convert to MSL so it can be compared
-  // directly to the windgram altitudes (which are in metres MSL).
-  const blhAGL = blhMap?.get(timeStr) ?? 0;
-  const boundaryLayerHeight = z_sfc + Math.max(50, blhAGL);
+  // Plafond thermique = LCL (Lifting Condensation Level) = base des nuages convectifs.
+  // Formule standard utilisée par tous les services de météo vol libre :
+  //   LCL_AGL (m) = (T_surface − T_rosée) × 125
+  // Avantages : cycle diurne naturel (T≈Td la nuit → LCL≈0),
+  //             sensible à l'humidité, indépendant du vent.
+  const T_surface  = val(hourly, 'temperature_2m', idx);
+  const Td_surface = val(hourly, 'dewpoint_2m', idx);
+  const spread     = Math.max(0, T_surface - Td_surface);
+  const boundaryLayerHeight = z_sfc + spread * 125;
 
   return {
     hour,
@@ -150,7 +153,6 @@ export function normalizeAromeResponse(
   raw: OpenMeteoResponse,
   lat: number,
   lng: number,
-  blhMap?: Map<string, number>,
 ): WeatherData {
   const z_sfc = raw.elevation ?? 0;
   const times = raw.hourly.time as string[];
@@ -172,7 +174,7 @@ export function normalizeAromeResponse(
     // Map heure → profil
     const profileMap = new Map<number, HourlyProfile>();
     entries.forEach(({ idx, hour, timeStr }) => {
-      profileMap.set(hour, buildHourlyProfile(raw.hourly, idx, hour, timeStr, z_sfc, blhMap));
+      profileMap.set(hour, buildHourlyProfile(raw.hourly, idx, hour, z_sfc));
     });
 
     // Garantir 24 profils (copie du voisin le plus proche si heure manquante)

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Position, WeatherData, DaySelection } from '@/types/weather';
-import { fetchAromeData, fetchBLH } from '@/services/aromeClient';
+import { fetchAromeData } from '@/services/aromeClient';
 import { normalizeAromeResponse } from '@/services/normalizer';
 
 interface WeatherState {
@@ -50,13 +50,10 @@ export const useWeatherStore = create<WeatherState>((set) => ({
 
     set({ position: pos, isLoading: true, error: null, weatherData: null });
 
-    Promise.all([
-      fetchAromeData(pos.lat, pos.lng, signal),
-      fetchBLH(pos.lat, pos.lng, signal).catch((e) => { console.warn('BLH fetch failed:', e); return undefined; }),
-    ])
-      .then(([raw, blhMap]) => {
+    fetchAromeData(pos.lat, pos.lng, signal)
+      .then((raw) => {
         if (signal.aborted) return;
-        const data = normalizeAromeResponse(raw, pos.lat, pos.lng, blhMap);
+        const data = normalizeAromeResponse(raw, pos.lat, pos.lng);
         set({ weatherData: data, isLoading: false });
       })
       .catch((err: unknown) => {

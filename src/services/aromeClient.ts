@@ -22,6 +22,7 @@ const LEVEL_VARS = [
 
 const SURFACE_VARS = [
   'temperature_2m',
+  'dewpoint_2m',
   'windspeed_10m',
   'winddirection_10m',
   'precipitation',
@@ -50,36 +51,6 @@ export interface OpenMeteoResponse {
 }
 
 
-/**
- * Fetch boundary_layer_height from Open-Meteo best_match (= GFS).
- * AROME returns 0 for this variable; GFS gives realistic values (~1000–1800m peak).
- * Returns Map<"YYYY-MM-DDTHH:00" → meters>.
- */
-export async function fetchBLH(
-  lat: number,
-  lng: number,
-  signal?: AbortSignal,
-): Promise<Map<string, number>> {
-  const params = new URLSearchParams({
-    latitude:      lat.toFixed(4),
-    longitude:     lng.toFixed(4),
-    hourly:        'boundary_layer_height',
-    forecast_days: '2',
-    timezone:      'Europe/Paris',
-  });
-  const res = await fetch(
-    `https://api.open-meteo.com/v1/forecast?${params}`,
-    { signal: signal ?? AbortSignal.timeout(20_000) },
-  );
-  if (!res.ok) throw new Error(`BLH HTTP ${res.status}`);
-  const json = await res.json() as { hourly: { time: string[]; boundary_layer_height: (number | null)[] } };
-  const map = new Map<string, number>();
-  json.hourly.time.forEach((t, i) => {
-    const v = json.hourly.boundary_layer_height[i];
-    if (v != null && v > 0) map.set(t, v);
-  });
-  return map;
-}
 
 export async function fetchAromeData(
   lat: number,

@@ -187,8 +187,11 @@ export function Windgram() {
   const totalW  = LEFT_W + HOURS.length * CELL_W;
   const totalH  = CLOUD_H + gridH + HOUR_LABEL_H + PRECIP_H;
 
-  const peakBLH           = Math.max(...thermalData.map((d) => d.blh));
-  const thermalFillOpacity = 0.18 + Math.min(peakBLH / 2500, 1) * 0.25;
+  // Opacité ∝ écart T−Td au pic de la journée (= qualité des thermiques)
+  // LCL_AGL = spread × 125 → spread = (blh − terrainAlt) / 125
+  const peakBLH     = Math.max(...thermalData.map((d) => d.blh));
+  const peakSpread  = (peakBLH - terrainAlt) / 125; // °C
+  const thermalFillOpacity = Math.min(peakSpread / 18, 1) * 0.40 + 0.05;
   const thermalPath        = buildThermalPath(thermalData, LEFT_W, CELL_W, gridH, gridY0, maxAltitude, terrainAlt);
 
   // Thermal outline
