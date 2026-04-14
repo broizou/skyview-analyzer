@@ -124,10 +124,13 @@ function buildHourlyProfile(
   idx: number,
   hour: number,
   timeStr: string,
+  z_sfc: number,
   blhMap?: Map<string, number>,
 ): HourlyProfile {
-  const blh = blhMap?.get(timeStr);
-  const boundaryLayerHeight = Math.max(50, blh ?? 0);
+  // BLH from Open-Meteo is AGL; convert to MSL so it can be compared
+  // directly to the windgram altitudes (which are in metres MSL).
+  const blhAGL = blhMap?.get(timeStr) ?? 0;
+  const boundaryLayerHeight = z_sfc + Math.max(50, blhAGL);
 
   return {
     hour,
@@ -169,7 +172,7 @@ export function normalizeAromeResponse(
     // Map heure → profil
     const profileMap = new Map<number, HourlyProfile>();
     entries.forEach(({ idx, hour, timeStr }) => {
-      profileMap.set(hour, buildHourlyProfile(raw.hourly, idx, hour, timeStr, blhMap));
+      profileMap.set(hour, buildHourlyProfile(raw.hourly, idx, hour, timeStr, z_sfc, blhMap));
     });
 
     // Garantir 24 profils (copie du voisin le plus proche si heure manquante)
