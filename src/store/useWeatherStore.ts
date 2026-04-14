@@ -8,6 +8,7 @@ interface WeatherState {
   selectedHour: number;
   daySelection: DaySelection;
   maxAltitude: number;
+  activeTab: 'windgram' | 'emagram';
   weatherData: WeatherData | null;
   isLoading: boolean;
   error: string | null;
@@ -18,6 +19,7 @@ interface WeatherState {
   setSelectedHour: (hour: number) => void;
   setDaySelection: (day: DaySelection) => void;
   setMaxAltitude: (alt: number) => void;
+  setActiveTab: (tab: 'windgram' | 'emagram') => void;
   setShowParcelTrajectory: (show: boolean) => void;
   setMobileTab: (tab: 'analysis' | 'map') => void;
 }
@@ -33,6 +35,7 @@ export const useWeatherStore = create<WeatherState>((set) => ({
   selectedHour:         12,
   daySelection:         'today',
   maxAltitude:          3000,
+  activeTab:            'windgram',
   weatherData:          null,
   isLoading:            true,
   error:                null,
@@ -62,6 +65,7 @@ export const useWeatherStore = create<WeatherState>((set) => ({
   setSelectedHour:         (hour) => set({ selectedHour: hour }),
   setDaySelection:         (day)  => set({ daySelection: day }),
   setMaxAltitude:          (alt)  => set({ maxAltitude: alt }),
+  setActiveTab:            (tab)  => set({ activeTab: tab }),
   setShowParcelTrajectory: (show) => set({ showParcelTrajectory: show }),
   setMobileTab:            (tab)  => set({ mobileTab: tab }),
 }));

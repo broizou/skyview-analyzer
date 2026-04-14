@@ -1,5 +1,4 @@
 import { useWeatherStore } from '@/store/useWeatherStore';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useMemo, useEffect, useRef, useState } from 'react';
 import type { DayForecast } from '@/types/weather';
 
@@ -118,7 +117,7 @@ function buildThermalPath(
 export function Windgram() {
   const {
     weatherData, daySelection, selectedHour,
-    maxAltitude, setMaxAltitude, setSelectedHour,
+    maxAltitude, setSelectedHour,
   } = useWeatherStore();
 
   const dayIdx  = daySelection === 'today' ? 0 : 1;
@@ -212,20 +211,7 @@ export function Windgram() {
   }
   return (
     <div className="flex flex-col h-full">
-      {/* En-tête */}
-      <div className="flex items-center gap-2 p-1.5 border-b border-border shrink-0">
-        <span className="text-[11px] text-muted-foreground">Alt. max</span>
-        <Select value={String(maxAltitude)} onValueChange={(v) => setMaxAltitude(Number(v))}>
-          <SelectTrigger className="h-6 w-[76px] text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {[1000, 2000, 3000, 4000, 5000].map((a) => (
-              <SelectItem key={a} value={String(a)}>{a} m</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Conteneur SVG : prend tout l'espace restant, scroll horizontal seulement */}
+      {/* Conteneur SVG : prend tout l'espace disponible, scroll horizontal seulement */}
       <div ref={svgContainerRef} className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
         <svg
           width={totalW}
