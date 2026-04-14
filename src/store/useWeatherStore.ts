@@ -24,7 +24,7 @@ interface WeatherState {
   setMobileTab: (tab: 'analysis' | 'map') => void;
 }
 
-const DEFAULT_POSITION: Position = { lat: 45.19, lng: 5.73 }; // Grenoble
+const DEFAULT_POSITION: Position = { lat: 45.837, lng: 6.213 }; // Décollage La Forclaz, Annecy
 
 // AbortController du fetch en cours — annule toute requête précédente
 // quand l'utilisateur change de position avant la fin du chargement.
